@@ -13,7 +13,7 @@ function stats_render_page(array $meta, array $data): void {
     $lineDeltas    = $data['line_deltas'];
     $weekday       = $data['weekday'];
     $hourly        = $data['hourly'];
-    $linesPerDay   = $data['lines_per_day'];
+    $linesPerDay   = stats_pad_daily_series($data['lines_per_day']);
     $linesPerMonth = $data['lines_per_month'];
     $hottest       = $data['hottest'];
     $largest       = $data['largest'];
@@ -59,9 +59,11 @@ function stats_render_page(array $meta, array $data): void {
         th, td { text-align: left; padding: .5rem .65rem; border-bottom: 1px solid var(--border); vertical-align: top; }
         th { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .grid.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        @media (max-width: 800px) { .grid.row3 { grid-template-columns: 1fr; } }
         .card { background: var(--surface); border: 1px solid var(--border); padding: .85rem 1rem 1rem; }
         .card h3 { margin: 0 0 .65rem; font-size: .95rem; }
-        .chart { position: relative; height: 260px; }
+        .chart { position: relative; height: 280px; }
         .chart.tall { height: 320px; }
         .bars { max-width: 900px; }
         .bar { display: flex; align-items: center; gap: .5rem; margin: .35rem 0; }
@@ -102,8 +104,11 @@ function stats_render_page(array $meta, array $data): void {
         </tbody>
     </table>
 
-    <div class="grid">
-        <div class="card"><h3>Lines changed / day (30d)</h3><div class="chart"><canvas id="chartDaily"></canvas></div></div>
+    <div class="card">
+        <h3>Lines changed / day (30d)</h3>
+        <div class="chart"><canvas id="chartDaily"></canvas></div>
+    </div>
+    <div class="grid row3">
         <div class="card"><h3>Lines changed / month (12mo)</h3><div class="chart"><canvas id="chartMonthly"></canvas></div></div>
         <div class="card"><h3>Commits by weekday</h3><div class="chart"><canvas id="chartWeekday"></canvas></div></div>
         <div class="card"><h3>Commits by hour</h3><div class="chart"><canvas id="chartHour"></canvas></div></div>
@@ -207,7 +212,14 @@ function stats_render_page(array $meta, array $data): void {
         new Chart(el, {
             type: 'line',
             data: { labels, datasets: [{ label, data: values, fill: true, backgroundColor: accent + '33', borderColor: accent, pointRadius: 2, tension: .25 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true },
+                    x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 15 } },
+                },
+            },
         });
     }
     function barChart(id, labels, values) {
@@ -237,7 +249,7 @@ function stats_render_page(array $meta, array $data): void {
     }
 
     const daily = <?php echo json_encode($linesPerDay, JSON_UNESCAPED_SLASHES); ?>;
-    lineChart('chartDaily', daily.map(d => d.label), daily.map(d => d.value), 'Lines');
+    lineChart('chartDaily', daily.map(d => d.label.slice(5)), daily.map(d => d.value), 'Lines');
     const monthly = <?php echo json_encode($linesPerMonth, JSON_UNESCAPED_SLASHES); ?>;
     lineChart('chartMonthly', monthly.map(d => d.label), monthly.map(d => d.value), 'Lines');
     const weekday = <?php echo json_encode($weekday, JSON_UNESCAPED_SLASHES); ?>;
