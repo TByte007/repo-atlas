@@ -5,3 +5,4 @@
 *.token
 .DS_Store
 .htpasswd
+.cursor
