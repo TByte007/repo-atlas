@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/sync.php';
+require_once __DIR__ . '/lib/stats_view.php';
 
 $flash = null;
 $syncOut = null;
@@ -33,6 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $catalog = atlas_load_catalog();
 $tokenOk = is_readable(atlas_config()['token_path']);
 $trackedNames = atlas_tracked_repos();
+$portfolio = atlas_load_portfolio_stats();
+$byRepo = is_array($portfolio['by_repo'] ?? null) ? $portfolio['by_repo'] : [];
 
 ?><!DOCTYPE html>
 <html lang="en">
@@ -40,6 +43,9 @@ $trackedNames = atlas_tracked_repos();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>repo-atlas</title>
+    <?php if ($byRepo !== []): ?>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <?php endif; ?>
     <style>
         :root {
             --bg: #1a1f24; --surface: #232a31; --text: #e6ebf0; --muted: #9aa7b5;
@@ -117,6 +123,13 @@ $trackedNames = atlas_tracked_repos();
                 <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($byRepo !== []): ?>
+        <div class="section">
+            <?php stats_render_daily_lines_chart($byRepo, 0, 280); ?>
+            <p class="hint" style="margin-top:.5rem">Per repo · as of <code><?php echo h((string)($portfolio['computed_at'] ?? '—')); ?></code></p>
         </div>
     <?php endif; ?>
 

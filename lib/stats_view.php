@@ -301,7 +301,6 @@ function stats_render_compare(array $meta, array $cache): void {
         $chartPayload[] = [
             'name'  => $r['name'],
             'short' => $short,
-            'daily' => $r['lines_per_day'],
             'monthly' => $r['lines_per_month'],
             'weekday' => $r['weekday'],
             'hourly' => $r['hourly'],
@@ -340,6 +339,8 @@ function stats_render_compare(array $meta, array $cache): void {
         th { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
         .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .grid.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        @media (max-width: 800px) { .grid.row3 { grid-template-columns: 1fr; } }
         .card { background: var(--surface); border: 1px solid var(--border); padding: .85rem 1rem 1rem; }
         .card h3 { margin: 0 0 .65rem; font-size: .95rem; }
         .chart { position: relative; height: 280px; }
@@ -387,8 +388,9 @@ function stats_render_compare(array $meta, array $cache): void {
         </tbody>
     </table>
 
-    <div class="grid">
-        <div class="card"><h3>Lines changed / day (30d)</h3><div class="chart"><canvas id="chartDaily"></canvas></div></div>
+    <?php stats_render_daily_lines_chart($byRepo, 0, 280); ?>
+
+    <div class="grid row3">
         <div class="card"><h3>Lines changed / month (12mo)</h3><div class="chart"><canvas id="chartMonthly"></canvas></div></div>
         <div class="card"><h3>Commits by weekday</h3><div class="chart"><canvas id="chartWeekday"></canvas></div></div>
         <div class="card"><h3>Commits by hour</h3><div class="chart"><canvas id="chartHour"></canvas></div></div>
@@ -472,7 +474,6 @@ function stats_render_compare(array $meta, array $cache): void {
         });
     }
 
-    const dayLabels = unionLabels(repos, 'daily');
     const monthLabels = unionLabels(repos, 'monthly');
     function seriesLabels(key) {
         for (const r of repos) {
@@ -484,7 +485,6 @@ function stats_render_compare(array $meta, array $cache): void {
     const weekdayLabels = seriesLabels('weekday');
     const hourLabels = seriesLabels('hourly');
 
-    multiLine('chartDaily', dayLabels, 'value', 'daily');
     multiLine('chartMonthly', monthLabels, 'value', 'monthly');
     multiBar('chartWeekday', weekdayLabels, 'count', 'weekday');
     multiBar('chartHour', hourLabels, 'count', 'hourly');
@@ -493,4 +493,100 @@ function stats_render_compare(array $meta, array $cache): void {
 </body>
 </html>
 <?php
+}
+
+/**
+ * Zero-fill a daily series to the last $days calendar days (Y-m-d labels).
+ *
+ * @param list<array{label:string,value:int|float}> $points
+ * @return list<array{label:string,value:int}>
+ */
+function stats_pad_daily_series(array $points, int $days = 30): array {
+    $map = [];
+    foreach ($points as $p) {
+        if (!isset($p['label'])) continue;
+        $map[(string)$p['label']] = (int)($p['value'] ?? 0);
+    }
+    $out = [];
+    $start = (new DateTimeImmutable('today'))->modify('-' . ($days - 1) . ' days');
+    for ($i = 0; $i < $days; $i++) {
+        $label = $start->modify("+{$i} days")->format('Y-m-d');
+        $out[] = ['label' => $label, 'value' => $map[$label] ?? 0];
+    }
+    return $out;
+}
+
+/**
+ * Multi-repo Chart.js fragment (compare-style). Caller must load Chart.js.
+ *
+ * @param array<string,mixed> $byRepo portfolio by_repo map
+ * @param int $width Container max-width in px; 0 = 100% of parent
+ */
+function stats_render_daily_lines_chart(
+    array $byRepo,
+    int $width = 0,
+    int $height = 280,
+    string $canvasId = 'chartDaily'
+): void {
+    $repos = [];
+    foreach ($byRepo as $name => $slice) {
+        if (!is_array($slice)) continue;
+        $short = str_contains((string)$name, '/') ? substr(strrchr((string)$name, '/'), 1) : (string)$name;
+        $repos[] = [
+            'name'  => (string)$name,
+            'short' => $short,
+            'daily' => stats_pad_daily_series($slice['lines_per_day'] ?? [], 30),
+        ];
+    }
+    if ($repos === []) return;
+
+    $dayLabels = array_map(static fn($p) => $p['label'], $repos[0]['daily']);
+    $boxStyle = 'position:relative;height:' . $height . 'px';
+    if ($width > 0) $boxStyle .= ';max-width:' . $width . 'px';
+    ?>
+    <div class="card" style="background:var(--surface);border:1px solid var(--border);padding:.85rem 1rem 1rem">
+        <h3 style="margin:0 0 .65rem;font-size:.95rem">Lines changed / day (30d)</h3>
+        <div style="<?php echo h($boxStyle); ?>"><canvas id="<?php echo h($canvasId); ?>"></canvas></div>
+    </div>
+    <script>
+    (function () {
+        const el = document.getElementById(<?php echo json_encode($canvasId); ?>);
+        if (!el || typeof Chart === 'undefined') return;
+        const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9aa7b5';
+        const border = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#34404c';
+        Chart.defaults.color = muted;
+        Chart.defaults.borderColor = border;
+        const palette = [
+            '#4fc3f7', '#ff8a65', '#81c784', '#ce93d8',
+            '#ffd54f', '#ef5350', '#26a69a', '#ffb74d',
+            '#7986cb', '#aed581', '#f06292', '#4db6ac',
+        ];
+        const repos = <?php echo json_encode($repos, JSON_UNESCAPED_SLASHES); ?>;
+        const labels = <?php echo json_encode($dayLabels, JSON_UNESCAPED_SLASHES); ?>.map(l => l.slice(5));
+        new Chart(el, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: repos.map((r, i) => ({
+                    label: r.short,
+                    data: (r.daily || []).map(p => p.value),
+                    borderColor: palette[i % palette.length],
+                    backgroundColor: 'transparent',
+                    pointRadius: 1.5,
+                    tension: .25,
+                })),
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: {
+                    y: { beginAtZero: true },
+                    x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 15 } },
+                },
+            },
+        });
+    })();
+    </script>
+    <?php
 }
