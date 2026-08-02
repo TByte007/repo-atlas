@@ -1,0 +1,3 @@
+# Raw PAT only, one line. Default path: ../repo-atlas-data/config/github.token
+# Fine-grained: metadata + contents read.
+github_pat_REPLACE_ME

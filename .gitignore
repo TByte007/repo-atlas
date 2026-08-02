@@ -1,0 +1,7 @@
+/config/github.token
+/config/local.php
+/mirrors/
+/cache/
+*.token
+.DS_Store
+.htpasswd
