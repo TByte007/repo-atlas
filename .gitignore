@@ -5,4 +5,5 @@
 *.token
 .DS_Store
 .htpasswd
+.htaccess
 .cursor
